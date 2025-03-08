@@ -11,6 +11,7 @@ Each contract was successfully **deployed on Base Sepolia**, showcasing my journ
 ✅ **Smart Contracts** written in **Solidity**  
 ✅ **Base Learn** exercises **1-13** fully implemented  
 ✅ **Deployed on Base Sepolia** for real network interaction  
+✅ **View deployed contracts:** [Base Sepolia Explorer](https://sepolia.basescan.org/address/0xa3D7493106D8DA40f4934EEb9359B79241536571)  
 
 ---
 
@@ -21,4 +22,4 @@ This is just the beginning—more advanced projects coming soon! 🚀
 
 ### 📜 Check out the contracts and dive into the code!  
 
-💙 #Base #Onchain #Solidity #SmartContracts #BuildOnBase
+💙 #Base #Onchain #Solidity #SmartContracts #BuildOnBase  
