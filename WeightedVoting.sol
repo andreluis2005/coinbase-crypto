@@ -1,154 +1,163 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity ^0.8.20;
 
+// Importing OpenZeppelin contracts for ERC20 and EnumerableSet functionalities
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
+// Contract for weighted voting using ERC20 token
 contract WeightedVoting is ERC20 {
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    // Constantes
-    uint256 public constant MAX_SUPPLY = 1_000_000;
+    // Custom errors
+    error TokensClaimed(); // Error for attempting to claim tokens again
+    error AllTokensClaimed(); // Error for attempting to claim tokens when all are already claimed
+    error NoTokensHeld(); // Error for attempting to perform an action without holding tokens
+    error QuorumTooHigh(); // Error for setting a quorum higher than total supply
+    error AlreadyVoted(); // Error for attempting to vote more than once
+    error VotingClosed(); // Error for attempting to vote on a closed issue
 
-    // Erros personalizados
-    error TokensClaimed();
-    error AllTokensClaimed();
-    error NoTokensHeld();
-    error QuorumTooHigh(uint256 quorum);
-    error AlreadyVoted();
-    error VotingClosed();
-
-    // Struct para representar uma questão
+    // Struct to represent an issue
     struct Issue {
-        EnumerableSet.AddressSet voters;
-        string issueDesc;
-        uint256 votesFor;
-        uint256 votesAgainst;
-        uint256 votesAbstain;
-        uint256 totalVotes;
-        uint256 quorum;
-        bool passed;
-        bool closed;
+        EnumerableSet.AddressSet voters; // Set of voters
+        string issueDesc; // Description of the issue
+        uint256 quorum; // Quorum required to close the issue
+        uint256 totalVotes; // Total number of votes casted
+        uint256 votesFor; // Total number of votes in favor
+        uint256 votesAgainst; // Total number of votes against
+        uint256 votesAbstain; // Total number of abstained votes
+        bool passed; // Flag indicating if the issue passed
+        bool closed; // Flag indicating if the issue is closed
     }
 
-    // Array de questões (não é público)
-    Issue[] private issues;
+    // Struct to represent a serialized issue
+    struct SerializedIssue {
+        address[] voters; // Array of voters
+        string issueDesc; // Description of the issue
+        uint256 quorum; // Quorum required to close the issue
+        uint256 totalVotes; // Total number of votes casted
+        uint256 votesFor; // Total number of votes in favor
+        uint256 votesAgainst; // Total number of votes against
+        uint256 votesAbstain; // Total number of abstained votes
+        bool passed; // Flag indicating if the issue passed
+        bool closed; // Flag indicating if the issue is closed
+    }
 
-    // Enum para representar o voto
+    // Enum to represent different vote options
     enum Vote {
         AGAINST,
         FOR,
         ABSTAIN
     }
 
-    // Construtor
-    constructor() ERC20("WeightedVotingToken", "WVT") {
-        // Inicializa o array de questões com uma questão vazia
-        issues.push();
+    // Array to store all issues
+    Issue[] internal issues;
+
+    // Mapping to track if tokens are claimed by an address
+    mapping(address => bool) public tokensClaimed;
+
+    uint256 public maxSupply = 1000000; // Maximum supply of tokens
+    uint256 public claimAmount = 100; // Amount of tokens to be claimed
+
+    // Constructor to initialize ERC20 token with a name and symbol
+    constructor() ERC20("WeightedVoteToken", "WVT") {
+        issues.push(); // Pushing an empty issue to start from index 1
     }
 
-    // Função para reivindicar tokens
+    // Function to claim tokens
     function claim() public {
-        // Verifica se o endereço já reivindicou tokens
-        if (balanceOf(msg.sender) > 0) {
-            revert TokensClaimed();
-        }
-
-        // Verifica se todos os tokens já foram reivindicados
-        if (totalSupply() + 100 > MAX_SUPPLY) {
+        // Check if all tokens have been claimed
+        if (totalSupply() + claimAmount > maxSupply) {
             revert AllTokensClaimed();
         }
-
-        // Mint de 100 tokens para o reivindicante
-        _mint(msg.sender, 100);
+        // Check if the caller has already claimed tokens
+        if (tokensClaimed[msg.sender]) {
+            revert TokensClaimed();
+        }
+        // Mint tokens to the caller
+        _mint(msg.sender, claimAmount);
+        tokensClaimed[msg.sender] = true; // Mark tokens as claimed
     }
 
-    // Função para criar uma nova questão
-    function createIssue(string memory _issueDesc, uint256 _quorum) external returns (uint256) {
-        // Verifica se o chamador possui tokens
+    // Function to create a new voting issue
+    function createIssue(string calldata _issueDesc, uint256 _quorum)
+        external
+        returns (uint256)
+    {
+        // Check if the caller holds any tokens
         if (balanceOf(msg.sender) == 0) {
             revert NoTokensHeld();
         }
-
-        // Verifica se o quorum é válido
+        // Check if the specified quorum is higher than total supply
         if (_quorum > totalSupply()) {
-            revert QuorumTooHigh(_quorum);
+            revert QuorumTooHigh();
         }
-
-        // Cria uma nova questão
-        Issue storage newIssue = issues.push();
-        newIssue.issueDesc = _issueDesc;
-        newIssue.quorum = _quorum;
-
-        // Retorna o índice da nova questão
+        // Create a new issue and return its index
+        Issue storage _issue = issues.push();
+        _issue.issueDesc = _issueDesc;
+        _issue.quorum = _quorum;
         return issues.length - 1;
     }
 
-    // Função para obter os dados de uma questão
-    function getIssue(uint256 _id) external view returns (
-        string memory,
-        uint256,
-        uint256,
-        uint256,
-        uint256,
-        uint256,
-        bool,
-        bool
-    ) {
-        require(_id < issues.length, unicode"Questão não encontrada");
-
-        Issue storage issue = issues[_id];
-        return (
-            issue.issueDesc,
-            issue.votesFor,
-            issue.votesAgainst,
-            issue.votesAbstain,
-            issue.totalVotes,
-            issue.quorum,
-            issue.passed,
-            issue.closed
-        );
+    // Function to get details of a voting issue
+    function getIssue(uint256 _issueId)
+        external
+        view
+        returns (SerializedIssue memory)
+    {
+        Issue storage _issue = issues[_issueId];
+        return
+            SerializedIssue({
+                voters: _issue.voters.values(),
+                issueDesc: _issue.issueDesc,
+                quorum: _issue.quorum,
+                totalVotes: _issue.totalVotes,
+                votesFor: _issue.votesFor,
+                votesAgainst: _issue.votesAgainst,
+                votesAbstain: _issue.votesAbstain,
+                passed: _issue.passed,
+                closed: _issue.closed
+            });
     }
 
-    // Função para votar em uma questão
+    // Function to cast a vote on a voting issue
     function vote(uint256 _issueId, Vote _vote) public {
-        // Verifica se a questão existe
-        require(_issueId < issues.length, unicode"Questão não encontrada");
+        Issue storage _issue = issues[_issueId];
 
-        Issue storage issue = issues[_issueId];
-
-        // Verifica se a votação está fechada
-        if (issue.closed) {
+        // Check if the issue is closed
+        if (_issue.closed) {
             revert VotingClosed();
         }
-
-        // Verifica se o endereço já votou
-        if (issue.voters.contains(msg.sender)) {
+        // Check if the caller has already voted
+        if (_issue.voters.contains(msg.sender)) {
             revert AlreadyVoted();
         }
 
-        // Adiciona o endereço ao conjunto de votantes
-        issue.voters.add(msg.sender);
-
-        // Obtém o saldo de tokens do votante
-        uint256 voteWeight = balanceOf(msg.sender);
-
-        // Adiciona o voto ao total apropriado
-        if (_vote == Vote.FOR) {
-            issue.votesFor += voteWeight;
-        } else if (_vote == Vote.AGAINST) {
-            issue.votesAgainst += voteWeight;
-        } else if (_vote == Vote.ABSTAIN) {
-            issue.votesAbstain += voteWeight;
+        uint256 nTokens = balanceOf(msg.sender);
+        // Check if the caller holds any tokens
+        if (nTokens == 0) {
+            revert NoTokensHeld();
         }
 
-        // Atualiza o total de votos
-        issue.totalVotes += voteWeight;
+        // Update vote counts based on the vote option
+        if (_vote == Vote.AGAINST) {
+            _issue.votesAgainst += nTokens;
+        } else if (_vote == Vote.FOR) {
+            _issue.votesFor += nTokens;
+        } else {
+            _issue.votesAbstain += nTokens;
+        }
 
-        // Verifica se o quorum foi atingido
-        if (issue.totalVotes >= issue.quorum) {
-            issue.closed = true;
-            issue.passed = issue.votesFor > issue.votesAgainst;
+        // Add the caller to the list of voters and update total votes count
+        _issue.voters.add(msg.sender);
+        _issue.totalVotes += nTokens;
+
+        // Close the issue if quorum is reached and determine if it passed
+        if (_issue.totalVotes >= _issue.quorum) {
+            _issue.closed = true;
+            if (_issue.votesFor > _issue.votesAgainst) {
+                _issue.passed = true;
+            }
         }
     }
 }
